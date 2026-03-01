@@ -1,0 +1,44 @@
+[project]
+name = "qw3n-face"
+version = "0.1.0"
+description = "Simple NiceGUI based interface for Qwen3 TTS"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "nicegui>=3.6.1,<4.0.0",
+    "qwen-tts>=0.0.5,<0.0.6",
+    "soundfile>=0.13.1,<0.14.0",
+    "torch>=2.10.0,<3.0.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+fix = true
+unsafe-fixes = false
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle - basic PEP8 style checks: formatting / style
+    "F",   # pyflakes - errors, unused vars/imports
+    "I",   # isort - Order of imports: standard -> third party -> local
+    "B",   # bugbear - common logic bugs
+    "UP",  # pyupgrade for modern syntax
+    "N",   # PEP8 naming conventions
+    "C4",  # flake8 comprehensions
+    "C90", # complexity check
+]
+
+ignore = ["E501", "E203", "B008"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 40
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+skip-magic-trailing-comma = false
+
+[tool.uv]
+add-bounds = "major"
