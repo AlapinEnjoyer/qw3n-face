@@ -23,6 +23,8 @@ Models are loaded on demand and can be unloaded individually to free memory. All
 ## Installation
 
 ```bash
+git clone https://github.com/AlapinEnjoyer/qw3n-face.git
+cd qw3n-face
 uv sync
 ```
 

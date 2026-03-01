@@ -23,12 +23,12 @@ def batch_tab():
                 empty_state("No items yet — add one below.")
                 return
 
+            personas = persona_store.all()
             for idx, item in enumerate(batch_items):
                 with ui.card().classes("w-full gap-2").props("flat bordered"):
                     with ui.row().classes("w-full items-center justify-between"):
                         ui.label(f"#{idx + 1}").classes("text-xs font-semibold text-stone-500")
                         with ui.row().classes("items-center gap-1"):
-                            personas = persona_store.all()
                             if personas:
 
                                 def _load_persona(e, i=idx):
