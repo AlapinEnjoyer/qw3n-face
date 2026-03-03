@@ -2,6 +2,7 @@ from nicegui import run, ui
 
 from app.audio.personas import persona_store
 from app.audio.tts import LANGUAGES, SPEAKERS, BatchItem, engine
+from app.ui.events import model_changed, personas_changed
 from app.ui.layout import empty_state, generation_result, model_gate, model_status_bar
 
 
@@ -181,5 +182,10 @@ def batch_tab():
 
         # Results are updated in place during generation
         results_area = ui.column().classes("w-full gap-2 mt-2")
+
+    # Re render when the custom_voice model is loaded/unloaded in another tab
+    model_changed.subscribe(lambda: content.refresh())
+    # Re render persona selectors when personas change in the personas tab
+    personas_changed.subscribe(content.refresh)
 
     content()

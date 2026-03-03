@@ -2,6 +2,7 @@ from nicegui import ui
 
 from app.audio.personas import Persona, now_iso, persona_store
 from app.audio.tts import DEFAULT_LANGUAGE, DEFAULT_SPEAKER, LANGUAGES, SPEAKERS
+from app.ui.events import personas_changed
 from app.ui.layout import empty_state
 
 
@@ -38,6 +39,7 @@ def personas_tab():
                         persona_store.delete(name)
                         ui.notify(f"Deleted '{name}'", type="info")
                         persona_list.refresh()
+                        personas_changed.emit()
 
                     ui.button(icon="delete", on_click=_delete).props("flat round dense color=negative size=sm")
 
@@ -79,6 +81,7 @@ def personas_tab():
             name_input.set_value("")
             instruct_input.set_value("")
             persona_list.refresh()
+            personas_changed.emit()
 
         ui.button("Save Persona", icon="save", on_click=save_persona).props("color=primary unelevated")
 

@@ -2,6 +2,7 @@ from nicegui import run, ui
 
 from app.audio.personas import Persona, now_iso, persona_store
 from app.audio.tts import DEFAULT_LANGUAGE, DEFAULT_SPEAKER, LANGUAGES, SPEAKER_INFO, SPEAKERS, engine
+from app.ui.events import personas_changed
 from app.ui.layout import generation_error, generation_result, generation_spinner, model_gate, model_status_bar
 
 
@@ -110,6 +111,7 @@ def custom_voice_tab():
                         ui.notify(f"Saved '{name}'", type="positive")
                         dlg.close()
                         persona_actions.refresh()
+                        personas_changed.emit()
 
                     ui.button("Save", icon="save", on_click=_save).props("color=primary unelevated")
             dlg.open()
@@ -135,7 +137,7 @@ def custom_voice_tab():
                         instruct.set_value(p.instruct)
                         ui.notify(f"Loaded '{p.name}'", type="positive")
 
-                ui.button(icon="file_download", on_click=_load_persona).props("flat dense color=primary").tooltip(
+                ui.button(icon="file_upload", on_click=_load_persona).props("flat dense color=primary").tooltip(
                     "Load persona"
                 )
 
@@ -148,5 +150,8 @@ def custom_voice_tab():
                 "color=primary size=md unelevated"
             )
             persona_actions()
+
+        # Refresh persona selector when personas change in the personas tab
+        personas_changed.subscribe(persona_actions.refresh)
 
     content()
