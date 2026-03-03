@@ -1,5 +1,6 @@
 from nicegui import events, run, ui
 
+from app.audio.transcribe import transcriber
 from app.audio.tts import DEFAULT_LANGUAGE, LANGUAGES, engine
 from app.config import UPLOAD_DIR
 from app.ui.layout import generation_error, generation_result, generation_spinner, model_gate, model_status_bar
@@ -42,14 +43,38 @@ def voice_clone_tab():
                     max_file_size=50_000_000,
                 ).classes("max-w-sm").props("accept=audio/* flat bordered color=primary")
 
-        ref_text = (
-            ui.input(
-                label="Reference transcript",
-                placeholder="Transcript of the reference audio",
+        with ui.row().classes("w-full items-end gap-2"):
+            ref_text = (
+                ui.input(
+                    label="Reference transcript",
+                    placeholder="Transcript of the reference audio",
+                )
+                .classes("flex-grow")
+                .props("filled")
             )
-            .classes("w-full")
-            .props("filled")
-        )
+
+            async def auto_transcribe():
+                if not ref_audio_path["value"]:
+                    ui.notify("Upload a reference audio clip first", type="warning")
+                    return
+                transcribe_btn.props("loading")
+                try:
+                    text_result, lang = await run.io_bound(
+                        transcriber.transcribe,
+                        ref_audio_path["value"],
+                    )
+                    ref_text.value = text_result
+                    ui.notify(f"Transcribed ({lang})", type="positive")
+                except Exception as exc:
+                    ui.notify(f"Transcription failed: {exc}", type="negative")
+                finally:
+                    transcribe_btn.props(remove="loading")
+
+            transcribe_btn = (
+                ui.button(icon="auto_fix_high", on_click=auto_transcribe)
+                .props("flat round color=primary")
+                .tooltip("Auto-transcribe uploaded audio")
+            )
 
         ui.separator().classes("my-1")
 
