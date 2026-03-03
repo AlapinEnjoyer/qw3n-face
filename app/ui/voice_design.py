@@ -1,7 +1,14 @@
 from nicegui import run, ui
 
 from app.audio.tts import DEFAULT_LANGUAGE, LANGUAGES, engine
-from app.ui.layout import generation_error, generation_result, generation_spinner, model_gate, model_status_bar
+from app.ui.layout import (
+    generation_error,
+    generation_result,
+    generation_spinner,
+    model_gate,
+    model_status_bar,
+    sampling_controls,
+)
 
 
 def voice_design_tab():
@@ -41,6 +48,9 @@ def voice_design_tab():
             .props("filled")
         )
 
+        with ui.expansion("Sampling Parameters", icon="tune").classes("w-full").props("dense header-class=text-sm"):
+            get_sampling_kwargs = sampling_controls()
+
         result_area = ui.column().classes("w-full")
 
         async def generate():
@@ -57,6 +67,7 @@ def voice_design_tab():
                     text=text.value,
                     language=language.value or DEFAULT_LANGUAGE,
                     instruct=instruct.value,
+                    **get_sampling_kwargs(),
                 )
                 result_area.clear()
                 with result_area:

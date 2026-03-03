@@ -142,7 +142,7 @@ class TTSEngine:
         del model
         _empty_device_cache()
 
-    def generate_batch_item(self, item: BatchItem) -> tuple[str, float]:
+    def generate_batch_item(self, item: BatchItem, **kwargs) -> tuple[str, float]:
         last_error: Exception | None = None
         for attempt in range(MAX_RETRIES + 1):
             try:
@@ -151,6 +151,7 @@ class TTSEngine:
                     language=item.language,
                     speaker=item.speaker,
                     instruct=item.instruct,
+                    **kwargs,
                 )
                 gc.collect()
                 _empty_device_cache()
@@ -167,6 +168,7 @@ class TTSEngine:
         language: str = DEFAULT_LANGUAGE,
         speaker: str = DEFAULT_SPEAKER,
         instruct: str = "",
+        **kwargs,
     ) -> tuple[str, float]:
         model = self._models["custom_voice"]
         wavs, sr = model.generate_custom_voice(
@@ -174,6 +176,7 @@ class TTSEngine:
             language=language,
             speaker=speaker,
             instruct=instruct or None,
+            **kwargs,
         )
         return self._save(wavs[0], sr)
 
@@ -182,12 +185,14 @@ class TTSEngine:
         text: str,
         language: str = DEFAULT_LANGUAGE,
         instruct: str = "",
+        **kwargs,
     ) -> tuple[str, float]:
         model = self._models["voice_design"]
         wavs, sr = model.generate_voice_design(
             text=text,
             language=language,
             instruct=instruct,
+            **kwargs,
         )
         return self._save(wavs[0], sr)
 
@@ -197,6 +202,7 @@ class TTSEngine:
         language: str = DEFAULT_LANGUAGE,
         ref_audio: str = "",
         ref_text: str = "",
+        **kwargs,
     ) -> tuple[str, float]:
         model = self._models["voice_clone"]
         wavs, sr = model.generate_voice_clone(
@@ -204,6 +210,7 @@ class TTSEngine:
             language=language,
             ref_audio=ref_audio,
             ref_text=ref_text,
+            **kwargs,
         )
         return self._save(wavs[0], sr)
 

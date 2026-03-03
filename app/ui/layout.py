@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Any
 
 from nicegui import app as nicegui_app
 from nicegui import run, ui
@@ -155,3 +156,169 @@ def model_status_bar(model_key: str, on_unload: Callable) -> None:
             on_unload()
 
         btn = ui.button("Unload", icon="eject", on_click=unload).props("flat dense color=negative size=sm")
+
+
+##########################################################################
+# Sampling parameter defaults (same as _merge_generate_kwargs of qwen-tts)
+##########################################################################
+
+SAMPLING_DEFAULTS: dict[str, Any] = {
+    "temperature": 0.9,
+    "top_p": 1.0,
+    "top_k": 50,
+    "max_new_tokens": 2048,
+    "repetition_penalty": 1.05,
+    "subtalker_temperature": 0.9,
+    "subtalker_top_p": 1.0,
+    "subtalker_top_k": 50,
+}
+
+
+def sampling_controls() -> Callable[[], dict[str, Any]]:
+    """Render a collapsible sampling-parameters panel.
+
+    Returns a callable that produces the current parameter values as a
+    ``dict`` suitable for ``**kwargs`` forwarding to the TTS engine.
+    """
+
+    # Main parameters
+    with ui.row().classes("w-full gap-3 flex-wrap"):
+        temperature = (
+            ui.number(
+                label="Temperature",
+                value=SAMPLING_DEFAULTS["temperature"],
+                min=0.01,
+                max=2.0,
+                step=0.01,
+                format="%.2f",
+            )
+            .classes("flex-1 min-w-36")
+            .props("filled dense")
+        )
+        temperature.tooltip("Sampling temperature — higher values produce more varied speech")
+
+        top_p = (
+            ui.number(
+                label="Top P",
+                value=SAMPLING_DEFAULTS["top_p"],
+                min=0.0,
+                max=1.0,
+                step=0.01,
+                format="%.2f",
+            )
+            .classes("flex-1 min-w-36")
+            .props("filled dense")
+        )
+        top_p.tooltip("Nucleus sampling — cumulative probability cutoff")
+
+        top_k = (
+            ui.number(
+                label="Top K",
+                value=SAMPLING_DEFAULTS["top_k"],
+                min=0,
+                max=500,
+                step=1,
+            )
+            .classes("flex-1 min-w-36")
+            .props("filled dense")
+        )
+        top_k.tooltip("Top-K sampling — number of highest-probability tokens to keep")
+
+    with ui.row().classes("w-full gap-3 flex-wrap"):
+        max_new_tokens = (
+            ui.number(
+                label="Max New Tokens",
+                value=SAMPLING_DEFAULTS["max_new_tokens"],
+                min=128,
+                max=8192,
+                step=128,
+            )
+            .classes("flex-1 min-w-36")
+            .props("filled dense")
+        )
+        max_new_tokens.tooltip("Maximum number of codec tokens to generate")
+
+        repetition_penalty = (
+            ui.number(
+                label="Repetition Penalty",
+                value=SAMPLING_DEFAULTS["repetition_penalty"],
+                min=1.0,
+                max=2.0,
+                step=0.01,
+                format="%.2f",
+            )
+            .classes("flex-1 min-w-36")
+            .props("filled dense")
+        )
+        repetition_penalty.tooltip("Penalty applied to repeated tokens — higher reduces repetition")
+
+    # Subtalker parameters (nested expansion)
+    with ui.expansion("Subtalker Parameters").classes("w-full").props("dense header-class=text-xs"):
+        ui.label(
+            "Controls the sub-codec generation stage of the 12 Hz tokenizer. "
+            "Only change these if you know what you are doing."
+        ).classes("text-xs text-stone-400 mb-2")
+
+        with ui.row().classes("w-full gap-3 flex-wrap"):
+            sub_temperature = (
+                ui.number(
+                    label="Subtalker Temperature",
+                    value=SAMPLING_DEFAULTS["subtalker_temperature"],
+                    min=0.01,
+                    max=2.0,
+                    step=0.01,
+                    format="%.2f",
+                )
+                .classes("flex-1 min-w-36")
+                .props("filled dense")
+            )
+
+            sub_top_p = (
+                ui.number(
+                    label="Subtalker Top P",
+                    value=SAMPLING_DEFAULTS["subtalker_top_p"],
+                    min=0.0,
+                    max=1.0,
+                    step=0.01,
+                    format="%.2f",
+                )
+                .classes("flex-1 min-w-36")
+                .props("filled dense")
+            )
+
+            sub_top_k = (
+                ui.number(
+                    label="Subtalker Top K",
+                    value=SAMPLING_DEFAULTS["subtalker_top_k"],
+                    min=0,
+                    max=500,
+                    step=1,
+                )
+                .classes("flex-1 min-w-36")
+                .props("filled dense")
+            )
+
+    # Reset button
+    all_controls = {
+        "temperature": temperature,
+        "top_p": top_p,
+        "top_k": top_k,
+        "max_new_tokens": max_new_tokens,
+        "repetition_penalty": repetition_penalty,
+        "subtalker_temperature": sub_temperature,
+        "subtalker_top_p": sub_top_p,
+        "subtalker_top_k": sub_top_k,
+    }
+
+    def _reset():
+        for key, ctrl in all_controls.items():
+            ctrl.value = SAMPLING_DEFAULTS[key]
+        ui.notify("Reset to defaults", type="info")
+
+    with ui.row().classes("w-full justify-end"):
+        ui.button("Reset to defaults", icon="restart_alt", on_click=_reset).props("flat dense color=primary size=sm")
+
+    def get_kwargs() -> dict[str, Any]:
+        return {key: ctrl.value for key, ctrl in all_controls.items()}
+
+    return get_kwargs

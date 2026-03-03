@@ -3,7 +3,14 @@ from nicegui import events, run, ui
 from app.audio.transcribe import transcriber
 from app.audio.tts import DEFAULT_LANGUAGE, LANGUAGES, engine
 from app.config import UPLOAD_DIR
-from app.ui.layout import generation_error, generation_result, generation_spinner, model_gate, model_status_bar
+from app.ui.layout import (
+    generation_error,
+    generation_result,
+    generation_spinner,
+    model_gate,
+    model_status_bar,
+    sampling_controls,
+)
 
 
 def voice_clone_tab():
@@ -97,6 +104,9 @@ def voice_clone_tab():
             .props("filled")
         )
 
+        with ui.expansion("Sampling Parameters", icon="tune").classes("w-full").props("dense header-class=text-sm"):
+            get_sampling_kwargs = sampling_controls()
+
         result_area = ui.column().classes("w-full")
 
         async def generate():
@@ -117,6 +127,7 @@ def voice_clone_tab():
                     language=language.value or DEFAULT_LANGUAGE,
                     ref_audio=ref_audio_path["value"],
                     ref_text=ref_text.value,
+                    **get_sampling_kwargs(),
                 )
                 result_area.clear()
                 with result_area:

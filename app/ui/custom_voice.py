@@ -3,7 +3,14 @@ from nicegui import run, ui
 from app.audio.personas import Persona, now_iso, persona_store
 from app.audio.tts import DEFAULT_LANGUAGE, DEFAULT_SPEAKER, LANGUAGES, SPEAKER_INFO, SPEAKERS, engine
 from app.ui.events import personas_changed
-from app.ui.layout import generation_error, generation_result, generation_spinner, model_gate, model_status_bar
+from app.ui.layout import (
+    generation_error,
+    generation_result,
+    generation_spinner,
+    model_gate,
+    model_status_bar,
+    sampling_controls,
+)
 
 
 def custom_voice_tab():
@@ -65,6 +72,9 @@ def custom_voice_tab():
             .props("filled")
         )
 
+        with ui.expansion("Sampling Parameters", icon="tune").classes("w-full").props("dense header-class=text-sm"):
+            get_sampling_kwargs = sampling_controls()
+
         result_area = ui.column().classes("w-full")
 
         async def generate():
@@ -79,6 +89,7 @@ def custom_voice_tab():
                     language=language.value or DEFAULT_LANGUAGE,
                     speaker=speaker.value or DEFAULT_SPEAKER,
                     instruct=instruct.value or "",
+                    **get_sampling_kwargs(),
                 )
                 result_area.clear()
                 with result_area:
