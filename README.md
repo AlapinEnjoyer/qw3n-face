@@ -49,8 +49,7 @@ Models are downloaded automatically from Hugging Face on first load:
 Each model is ~3.4 GB. They are cached locally by Hugging Face after the first download.
 
 ## TODOs
-- [ ] Add ability to specify output filename
-- [ ] Add automatic transcription of uploaded audio
+- [x] Add automatic transcription of uploaded audio
 - [ ] Add audio visualisation (waveform, spectrogram?)
 
 ## Roadmap
