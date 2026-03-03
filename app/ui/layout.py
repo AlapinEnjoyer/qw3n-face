@@ -5,6 +5,7 @@ from nicegui import run, ui
 
 from app.audio.tts import MODEL_IDS, MODEL_LABELS, engine, is_model_cached
 from app.config import OUTPUT_DIR
+from app.ui.events import model_changed
 
 
 def header():
@@ -118,6 +119,7 @@ def model_gate(model_key: str, on_done: Callable) -> None:
             try:
                 await run.io_bound(engine.load_model, model_key)
                 ui.notify(f"{label} ready", type="positive")
+                model_changed.emit(model_key)
                 on_done()
             except Exception as e:
                 status_label.text = f"Failed: {e}"
@@ -149,6 +151,7 @@ def model_status_bar(model_key: str, on_unload: Callable) -> None:
             spinner.set_visibility(True)
             await run.io_bound(engine.unload_model, model_key)
             ui.notify(f"{label} unloaded", type="info")
+            model_changed.emit(model_key)
             on_unload()
 
         btn = ui.button("Unload", icon="eject", on_click=unload).props("flat dense color=negative size=sm")
