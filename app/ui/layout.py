@@ -4,7 +4,13 @@ from typing import Any
 from nicegui import app as nicegui_app
 from nicegui import run, ui
 
-from app.audio.tts import MODEL_IDS, MODEL_LABELS, engine, is_model_cached
+from app.audio.tts import (
+    engine,
+    get_available_model_sizes,
+    get_model_id,
+    get_model_label,
+    is_model_cached,
+)
 from app.config import OUTPUT_DIR
 from app.ui.events import model_changed
 
@@ -63,10 +69,13 @@ def generation_spinner(result_area, message: str) -> None:
 
 
 def generation_error(result_area, error: Exception) -> None:
+    message = str(error)
+    if "probability tensor contains either" in message.lower():
+        message = f"{message} Try lower sampling values, and on Apple Silicon switch model backend to CPU if MPS remains unstable."
     result_area.clear()
     with result_area:
-        ui.label(f"Error: {error}").classes("text-red-500")
-    ui.notify(str(error), type="negative")
+        ui.label(f"Error: {message}").classes("text-red-500")
+    ui.notify(message, type="negative")
 
 
 def generation_result(filename: str, duration: float):
@@ -85,11 +94,46 @@ def generation_result(filename: str, duration: float):
 
 
 def model_gate(model_key: str, on_done: Callable) -> None:
-    cached = is_model_cached(model_key)
-    label = MODEL_LABELS[model_key]
-    model_id = MODEL_IDS[model_key]
+    model_sizes = get_available_model_sizes(model_key)
+    selected_size = engine.get_selected_size(model_key)
+    available_devices = engine.get_available_devices()
+    selected_device = engine.get_device()
+    cached = is_model_cached(model_key, selected_size)
+    label = get_model_label(model_key, selected_size)
+    model_id = get_model_id(model_key, selected_size)
 
     with ui.column().classes("w-full items-center py-10 gap-4"):
+        if len(model_sizes) > 1:
+            size_select = (
+                ui.select(model_sizes, value=selected_size, label="Model Size").classes("w-44").props("filled")
+            )
+
+            def _change_size(e):
+                try:
+                    engine.set_selected_size(model_key, str(e.value))
+                    on_done()
+                except Exception as exc:
+                    ui.notify(str(exc), type="negative")
+
+            size_select.on_value_change(_change_size)
+
+        if len(available_devices) > 1:
+            device_select = (
+                ui.select(available_devices, value=selected_device, label="Backend Device")
+                .classes("w-44")
+                .props("filled")
+            )
+
+            def _change_device(e):
+                try:
+                    engine.set_device(str(e.value))
+                    model_changed.emit(model_key)
+                    on_done()
+                except Exception as exc:
+                    ui.notify(str(exc), type="negative")
+
+            device_select.on_value_change(_change_device)
+
         if cached:
             ui.icon("memory").classes("text-5xl text-stone-400")
             ui.label("Model downloaded but not loaded").classes(
@@ -133,16 +177,22 @@ def model_gate(model_key: str, on_done: Callable) -> None:
 
 def model_status_bar(model_key: str, on_unload: Callable) -> None:
     """Thin status bar shown at the top of a tab when its model is loaded."""
-    label = MODEL_LABELS[model_key]
+    selected_size = engine.get_selected_size(model_key)
+    label = get_model_label(model_key, selected_size)
+    device = engine.get_device()
+    loaded_dtype = engine.get_loaded_dtype(model_key)
+    dtype_text = str(loaded_dtype).replace("torch.", "") if loaded_dtype is not None else "unknown"
 
     with (
         ui.row()
         .classes("w-full items-center justify-between px-3 py-1 rounded-lg mb-3")
         .style("background: rgba(100, 76, 210, 0.08)")
     ):
-        with ui.row().classes("items-center gap-2"):
+        with ui.row().classes("items-center gap-2 flex-wrap"):
             ui.icon("memory").classes("text-base text-primary")
             ui.label(f"{label} loaded").classes("text-sm text-stone-500")
+            ui.icon("memory").classes("text-xs text-stone-400")
+            ui.label(f"{device} / {dtype_text}").classes("text-xs text-stone-400 font-mono")
 
         spinner = ui.spinner("dots", size="sm", color="primary")
         spinner.set_visibility(False)
@@ -182,40 +232,33 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
     """
 
     # Main parameters
-    with ui.row().classes("w-full gap-3 flex-wrap"):
-        temperature = (
-            ui.number(
-                label="Temperature",
-                value=SAMPLING_DEFAULTS["temperature"],
+    with ui.row().classes("w-full gap-4 flex-wrap items-end"):
+        with ui.column().classes("flex-1 min-w-56 gap-1"):
+            ui.label("Temperature").classes("text-xs text-stone-500")
+            temperature = ui.slider(
                 min=0.01,
                 max=2.0,
                 step=0.01,
-                format="%.2f",
-            )
-            .classes("flex-1 min-w-36")
-            .props("filled dense")
-        )
-        temperature.tooltip("Sampling temperature — higher values produce more varied speech")
+                value=SAMPLING_DEFAULTS["temperature"],
+            ).props("label-always color=primary")
+            temperature.tooltip("Sampling temperature — higher values produce more varied speech")
 
-        top_p = (
-            ui.number(
-                label="Top P",
-                value=SAMPLING_DEFAULTS["top_p"],
+        with ui.column().classes("flex-1 min-w-56 gap-1"):
+            ui.label("Top P").classes("text-xs text-stone-500")
+            top_p = ui.slider(
                 min=0.0,
                 max=1.0,
                 step=0.01,
-                format="%.2f",
-            )
-            .classes("flex-1 min-w-36")
-            .props("filled dense")
-        )
-        top_p.tooltip("Nucleus sampling — cumulative probability cutoff")
+                value=SAMPLING_DEFAULTS["top_p"],
+            ).props("label-always color=primary")
+            top_p.tooltip("Nucleus sampling — cumulative probability cutoff")
 
+    with ui.row().classes("w-full gap-4 flex-wrap items-end"):
         top_k = (
             ui.number(
                 label="Top K",
                 value=SAMPLING_DEFAULTS["top_k"],
-                min=0,
+                min=1,
                 max=500,
                 step=1,
             )
@@ -224,7 +267,6 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
         )
         top_k.tooltip("Top-K sampling — number of highest-probability tokens to keep")
 
-    with ui.row().classes("w-full gap-3 flex-wrap"):
         max_new_tokens = (
             ui.number(
                 label="Max New Tokens",
@@ -233,24 +275,23 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
                 max=8192,
                 step=128,
             )
-            .classes("flex-1 min-w-36")
+            .classes("flex-1 min-w-48")
             .props("filled dense")
         )
         max_new_tokens.tooltip("Maximum number of codec tokens to generate")
 
-        repetition_penalty = (
-            ui.number(
-                label="Repetition Penalty",
+        with ui.column().classes("items-center gap-1 min-w-36"):
+            ui.label("Repetition Penalty").classes("text-xs text-stone-500")
+            repetition_penalty = ui.knob(
                 value=SAMPLING_DEFAULTS["repetition_penalty"],
                 min=1.0,
                 max=2.0,
                 step=0.01,
-                format="%.2f",
+                color="primary",
+                size="72px",
+                show_value=True,
             )
-            .classes("flex-1 min-w-36")
-            .props("filled dense")
-        )
-        repetition_penalty.tooltip("Penalty applied to repeated tokens — higher reduces repetition")
+            repetition_penalty.tooltip("Penalty applied to repeated tokens — higher reduces repetition")
 
     # Subtalker parameters (nested expansion)
     with ui.expansion("Subtalker Parameters").classes("w-full").props("dense header-class=text-xs"):
@@ -259,38 +300,30 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
             "Only change these if you know what you are doing."
         ).classes("text-xs text-stone-400 mb-2")
 
-        with ui.row().classes("w-full gap-3 flex-wrap"):
-            sub_temperature = (
-                ui.number(
-                    label="Subtalker Temperature",
-                    value=SAMPLING_DEFAULTS["subtalker_temperature"],
+        with ui.row().classes("w-full gap-4 flex-wrap items-end"):
+            with ui.column().classes("flex-1 min-w-48 gap-1"):
+                ui.label("Subtalker Temperature").classes("text-xs text-stone-500")
+                sub_temperature = ui.slider(
                     min=0.01,
                     max=2.0,
                     step=0.01,
-                    format="%.2f",
-                )
-                .classes("flex-1 min-w-36")
-                .props("filled dense")
-            )
+                    value=SAMPLING_DEFAULTS["subtalker_temperature"],
+                ).props("label color=secondary")
 
-            sub_top_p = (
-                ui.number(
-                    label="Subtalker Top P",
-                    value=SAMPLING_DEFAULTS["subtalker_top_p"],
+            with ui.column().classes("flex-1 min-w-48 gap-1"):
+                ui.label("Subtalker Top P").classes("text-xs text-stone-500")
+                sub_top_p = ui.slider(
                     min=0.0,
                     max=1.0,
                     step=0.01,
-                    format="%.2f",
-                )
-                .classes("flex-1 min-w-36")
-                .props("filled dense")
-            )
+                    value=SAMPLING_DEFAULTS["subtalker_top_p"],
+                ).props("label color=secondary")
 
             sub_top_k = (
                 ui.number(
                     label="Subtalker Top K",
                     value=SAMPLING_DEFAULTS["subtalker_top_k"],
-                    min=0,
+                    min=1,
                     max=500,
                     step=1,
                 )
@@ -319,6 +352,10 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
         ui.button("Reset to defaults", icon="restart_alt", on_click=_reset).props("flat dense color=primary size=sm")
 
     def get_kwargs() -> dict[str, Any]:
-        return {key: ctrl.value for key, ctrl in all_controls.items()}
+        kwargs = {key: ctrl.value for key, ctrl in all_controls.items()}
+        kwargs["top_k"] = int(kwargs["top_k"])
+        kwargs["subtalker_top_k"] = int(kwargs["subtalker_top_k"])
+        kwargs["max_new_tokens"] = int(kwargs["max_new_tokens"])
+        return kwargs
 
     return get_kwargs

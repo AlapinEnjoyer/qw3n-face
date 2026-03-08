@@ -1,6 +1,5 @@
 from nicegui import app, ui
 
-from app.audio.tts import DEVICE
 from app.config import OUTPUT_DIR
 from app.ui.batch import batch_tab
 from app.ui.custom_voice import custom_voice_tab
@@ -34,10 +33,6 @@ def index():
     header()
 
     with ui.column().classes("w-full max-w-2xl mx-auto px-4 py-6 gap-0"):
-        with ui.row().classes("w-full items-center justify-between mb-4"):
-            with ui.column().classes("w-full items-center"):
-                ui.label(f"Running on {DEVICE}").classes("text-xl font-bold")
-
         with (
             ui.tabs()
             .classes("w-full")

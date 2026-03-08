@@ -12,13 +12,20 @@ A local web UI for the [Qwen3-TTS](https://huggingface.co/Qwen) model family, bu
 | **Batch** | Queue multiple Custom Voice items and generate them sequentially with per-item progress |
 | **Personas** | Save and manage named voice presets (speaker + language + instruction) for quick reuse |
 
-Models are loaded on demand and can be unloaded individually to free memory. All three models are separate 1.7B checkpoints downloaded from Hugging Face.
+Models are loaded on demand and can be unloaded individually to free memory. Custom Voice and Voice Clone support both 0.6B and 1.7B checkpoints; Voice Design currently uses the 1.7B checkpoint only.
+
+Additional runtime behavior:
+
+- Choose the model size before loading when multiple checkpoints are available
+- Choose the backend device before loading (`cuda:0`, `mps`, or `cpu`, depending on your machine)
+- Loaded tabs show the active runtime as `device / dtype`
+- On Apple Silicon, the app retries once in safer MPS `float32` mode if generation fails with a probability-tensor stability error
 
 ## Requirements
 
 - Python 3.11+
 - [uv](https://github.com/astral-sh/uv)
-- A machine with MPS (Apple Silicon), CUDA, or enough RAM for CPU inference (~4 GB per model)
+- A machine with MPS (Apple Silicon), CUDA, or enough RAM for CPU inference
 
 ## Installation
 
@@ -38,15 +45,22 @@ Then app should auto open itself on [http://localhost:8080](http://localhost:808
 
 ## Models
 
-Models are downloaded automatically from Hugging Face on first load:
+Models are downloaded automatically from Hugging Face once requested in the app:
 
 | Key | Checkpoint |
 |---|---|
-| Custom Voice | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` |
+| Custom Voice | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` or `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` |
 | Voice Design | `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` |
-| Voice Clone | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` |
+| Voice Clone | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` or `Qwen/Qwen3-TTS-12Hz-0.6B-Base` |
 
-Each model is ~3.4 GB. They are cached locally by Hugging Face after the first download.
+Approximate checkpoint sizes vary by model variant; 0.6B models are substantially smaller than 1.7B models. Downloads are cached locally by Hugging Face after the first load.
+
+## Runtime Notes
+
+- CUDA uses `bfloat16`
+- MPS prefers `float16`, but the app can retry a failing model in `float32` for stability
+- CPU prefers `bfloat16` and falls back to `float32` if needed during model load
+- If Apple Silicon generation still fails on MPS, switch the backend device to `cpu` before loading the model
 
 ## TODOs
 - [x] Add automatic transcription of uploaded audio
