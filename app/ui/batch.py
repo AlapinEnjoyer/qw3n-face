@@ -3,7 +3,7 @@ from nicegui import run, ui
 from app.audio.personas import persona_store
 from app.audio.tts import LANGUAGES, SPEAKERS, BatchItem, engine
 from app.ui.events import model_changed, personas_changed
-from app.ui.layout import empty_state, generation_result, model_gate, model_status_bar
+from app.ui.layout import empty_state, generation_result, model_gate, model_status_bar, sampling_controls
 
 
 def batch_tab():
@@ -72,7 +72,11 @@ def batch_tab():
 
         items_editor()
 
+        with ui.expansion("Sampling Parameters", icon="tune").classes("w-full").props("dense header-class=text-sm"):
+            get_sampling_kwargs = sampling_controls()
+
         async def generate_all():
+            sampling_kwargs = get_sampling_kwargs()
             snapshot = [
                 BatchItem(
                     text=i.text,
@@ -142,7 +146,7 @@ def batch_tab():
                 progress_label.text = f"{i} / {len(valid)} complete"
 
                 try:
-                    filename, duration = await run.io_bound(engine.generate_batch_item, item)
+                    filename, duration = await run.io_bound(engine.generate_batch_item, item, **sampling_kwargs)
                     ref["running"].set_visibility(False)
                     ref["success"].set_visibility(True)
                     with ref["audio"]:
