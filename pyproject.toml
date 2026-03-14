@@ -5,9 +5,10 @@ description = "Simple NiceGUI based interface for Qwen3 TTS"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "faster-qwen3-tts>=0.2.4,<0.3.0",
     "faster-whisper>=1.2.1,<2.0.0",
     "nicegui>=3.6.1,<4.0.0",
-    "qwen-tts>=0.0.5,<0.0.6",
+    "qwen-tts>=0.1.1,<0.2.0",
     "soundfile>=0.13.1,<0.14.0",
     "torch>=2.10.0,<3.0.0",
 ]

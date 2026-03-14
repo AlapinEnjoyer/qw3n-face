@@ -73,7 +73,7 @@ def batch_tab():
         items_editor()
 
         with ui.expansion("Sampling Parameters", icon="tune").classes("w-full").props("dense header-class=text-sm"):
-            get_sampling_kwargs = sampling_controls()
+            get_sampling_kwargs = sampling_controls("custom_voice")
 
         async def generate_all():
             sampling_kwargs = get_sampling_kwargs()

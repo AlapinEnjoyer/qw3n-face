@@ -1,4 +1,5 @@
 import gc
+import logging
 import platform
 import time
 import uuid
@@ -10,6 +11,8 @@ import torch
 from huggingface_hub import snapshot_download
 
 from app.config import OUTPUT_DIR
+
+logger = logging.getLogger(__name__)
 
 SPEAKERS = [
     "Vivian",
@@ -94,6 +97,9 @@ DEFAULT_LANGUAGE = "Auto"
 MAX_RETRIES = 3
 RETRY_BACKOFF: tuple[int, int, int] = (5, 10, 20)
 
+FAST_BACKEND = "faster-qwen3-tts"
+STANDARD_BACKEND = "qwen-tts"
+
 
 @dataclass
 class BatchItem:
@@ -164,11 +170,22 @@ def is_model_cached(key: str, size: str) -> bool:
         return False
 
 
+def _filter_generate_kwargs(backend: str | None, kwargs: dict[str, Any]) -> dict[str, Any]:
+    if backend != FAST_BACKEND:
+        return dict(kwargs)
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key not in {"subtalker_dosample", "subtalker_top_k", "subtalker_top_p", "subtalker_temperature"}
+    }
+
+
 class TTSEngine:
     def __init__(self) -> None:
         self._models: dict[str, Any] = {}
         self._loaded_sizes: dict[str, str] = {}
         self._loaded_dtypes: dict[str, Any] = {}
+        self._loaded_backends: dict[str, str] = {}
         self._device: str = DEFAULT_DEVICE
         self._mps_force_fp32: dict[str, bool] = {}
         self._selected_sizes: dict[str, str] = {
@@ -193,6 +210,12 @@ class TTSEngine:
     def get_loaded_dtype(self, key: str):
         return self._loaded_dtypes.get(key)
 
+    def get_loaded_backend(self, key: str) -> str | None:
+        return self._loaded_backends.get(key)
+
+    def supports_subtalker_controls(self, key: str) -> bool:
+        return self.get_loaded_backend(key) != FAST_BACKEND
+
     def get_selected_size(self, key: str) -> str:
         return self._selected_sizes[key]
 
@@ -207,40 +230,86 @@ class TTSEngine:
     def is_loaded(self, key: str) -> bool:
         return key in self._models and self._loaded_sizes.get(key) == self._selected_sizes.get(key)
 
+    @staticmethod
+    def _load_standard_model(model_id: str, device: str, dtype: Any):
+        from qwen_tts import Qwen3TTSModel
+
+        try:
+            return Qwen3TTSModel.from_pretrained(
+                model_id,
+                device_map=device,
+                torch_dtype=dtype,
+            )
+        except TypeError:
+            return Qwen3TTSModel.from_pretrained(
+                model_id,
+                device_map=device,
+                dtype=dtype,
+            )
+
+    def _load_cuda_fast_model(self, model_id: str, dtype: Any):
+        from faster_qwen3_tts import FasterQwen3TTS
+
+        return FasterQwen3TTS.from_pretrained(
+            model_name=model_id,
+            device=self._device,
+            dtype=dtype,
+        )
+
     def load_model(self, key: str) -> None:
         target_size = self._selected_sizes[key]
         if key in self._models and self._loaded_sizes.get(key) == target_size:
             return
         if key in self._models:
             self.unload_model(key)
-        from qwen_tts import Qwen3TTSModel
 
         model_id = get_model_id(key, target_size)
         load_dtype = _load_dtype(self._device, key, force_mps_fp32=self._mps_force_fp32.get(key, False))
-        try:
-            model = Qwen3TTSModel.from_pretrained(
-                model_id,
-                device_map=self._device,
-                dtype=load_dtype,
-            )
-        except Exception:
-            if self._device == "cpu" and load_dtype == torch.bfloat16:
-                load_dtype = torch.float32
-                model = Qwen3TTSModel.from_pretrained(
-                    model_id,
-                    device_map=self._device,
+        model: Any | None = None
+        backend = STANDARD_BACKEND
+        fast_error: Exception | None = None
+
+        if self._device.startswith("cuda"):
+            try:
+                model = self._load_cuda_fast_model(model_id, load_dtype)
+                backend = FAST_BACKEND
+            except Exception as exc:
+                fast_error = exc
+                logger.warning("Fast CUDA backend unavailable; falling back to qwen-tts (%s)", exc)
+
+        if backend == STANDARD_BACKEND:
+            try:
+                model = self._load_standard_model(
+                    model_id=model_id,
+                    device=self._device,
                     dtype=load_dtype,
                 )
-            else:
-                raise
+            except Exception as std_exc:
+                if self._device == "cpu" and load_dtype == torch.bfloat16:
+                    load_dtype = torch.float32
+                    model = self._load_standard_model(
+                        model_id=model_id,
+                        device=self._device,
+                        dtype=load_dtype,
+                    )
+                elif fast_error is not None:
+                    raise RuntimeError("Failed to load both CUDA fast backend and qwen-tts fallback") from std_exc
+                else:
+                    raise
+
+        if model is None:
+            raise RuntimeError(f"Model for key '{key}' failed to load")
+
         self._models[key] = model
         self._loaded_sizes[key] = target_size
         self._loaded_dtypes[key] = load_dtype
+        self._loaded_backends[key] = backend
 
     def unload_model(self, key: str) -> None:
         model = self._models.pop(key, None)
         self._loaded_sizes.pop(key, None)
         self._loaded_dtypes.pop(key, None)
+        self._loaded_backends.pop(key, None)
         if model is None:
             return
         try:
@@ -289,6 +358,7 @@ class TTSEngine:
         instruct: str = "",
         **kwargs,
     ) -> tuple[str, float]:
+        generate_kwargs = _filter_generate_kwargs(self.get_loaded_backend("custom_voice"), kwargs)
         wavs, sr = self._run_with_stability_retry(
             "custom_voice",
             lambda: self._models["custom_voice"].generate_custom_voice(
@@ -296,7 +366,7 @@ class TTSEngine:
                 language=language,
                 speaker=speaker,
                 instruct=instruct or None,
-                **kwargs,
+                **generate_kwargs,
             ),
         )
         return self._save(wavs[0], sr)
@@ -308,13 +378,14 @@ class TTSEngine:
         instruct: str = "",
         **kwargs,
     ) -> tuple[str, float]:
+        generate_kwargs = _filter_generate_kwargs(self.get_loaded_backend("voice_design"), kwargs)
         wavs, sr = self._run_with_stability_retry(
             "voice_design",
             lambda: self._models["voice_design"].generate_voice_design(
                 text=text,
                 language=language,
                 instruct=instruct,
-                **kwargs,
+                **generate_kwargs,
             ),
         )
         return self._save(wavs[0], sr)
@@ -327,6 +398,7 @@ class TTSEngine:
         ref_text: str = "",
         **kwargs,
     ) -> tuple[str, float]:
+        generate_kwargs = _filter_generate_kwargs(self.get_loaded_backend("voice_clone"), kwargs)
         wavs, sr = self._run_with_stability_retry(
             "voice_clone",
             lambda: self._models["voice_clone"].generate_voice_clone(
@@ -334,7 +406,7 @@ class TTSEngine:
                 language=language,
                 ref_audio=ref_audio,
                 ref_text=ref_text,
-                **kwargs,
+                **generate_kwargs,
             ),
         )
         return self._save(wavs[0], sr)

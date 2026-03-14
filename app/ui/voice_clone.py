@@ -105,7 +105,7 @@ def voice_clone_tab():
         )
 
         with ui.expansion("Sampling Parameters", icon="tune").classes("w-full").props("dense header-class=text-sm"):
-            get_sampling_kwargs = sampling_controls()
+            get_sampling_kwargs = sampling_controls("voice_clone")
 
         result_area = ui.column().classes("w-full")
 

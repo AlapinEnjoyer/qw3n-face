@@ -18,7 +18,8 @@ Additional runtime behavior:
 
 - Choose the model size before loading when multiple checkpoints are available
 - Choose the backend device before loading (`cuda:0`, `mps`, or `cpu`, depending on your machine)
-- Loaded tabs show the active runtime as `device / dtype`
+- CUDA automatically prefers the `faster-qwen3-tts` backend and falls back to `qwen-tts` if the fast path cannot initialize
+- Loaded tabs show the active runtime as `device / dtype / backend`
 - On Apple Silicon, the app retries once in safer MPS `float32` mode if generation fails with a probability-tensor stability error
 
 ## Requirements
@@ -38,7 +39,7 @@ uv sync
 ## Running
 
 ```bash
-uv run python main.py
+uv run main.py
 ```
 
 Then app should auto open itself on [http://localhost:8080](http://localhost:8080).
@@ -57,9 +58,10 @@ Approximate checkpoint sizes vary by model variant; 0.6B models are substantiall
 
 ## Runtime Notes
 
-- CUDA uses `bfloat16`
+- CUDA uses `bfloat16` and automatically attempts the CUDA-graph fast backend (`faster-qwen3-tts`)
 - MPS prefers `float16`, but the app can retry a failing model in `float32` for stability
 - CPU prefers `bfloat16` and falls back to `float32` if needed during model load
+- Fast CUDA mode uses the library's public API; subtalker-specific controls stay available on the normal `qwen-tts` backend and are disabled in the UI when the fast backend is loaded
 - If Apple Silicon generation still fails on MPS, switch the backend device to `cpu` before loading the model
 
 ## TODOs

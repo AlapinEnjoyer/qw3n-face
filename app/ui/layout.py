@@ -5,6 +5,7 @@ from nicegui import app as nicegui_app
 from nicegui import run, ui
 
 from app.audio.tts import (
+    FAST_BACKEND,
     engine,
     get_available_model_sizes,
     get_model_id,
@@ -181,6 +182,7 @@ def model_status_bar(model_key: str, on_unload: Callable) -> None:
     label = get_model_label(model_key, selected_size)
     device = engine.get_device()
     loaded_dtype = engine.get_loaded_dtype(model_key)
+    loaded_backend = engine.get_loaded_backend(model_key) or "unknown"
     dtype_text = str(loaded_dtype).replace("torch.", "") if loaded_dtype is not None else "unknown"
 
     with (
@@ -192,7 +194,7 @@ def model_status_bar(model_key: str, on_unload: Callable) -> None:
             ui.icon("memory").classes("text-base text-primary")
             ui.label(f"{label} loaded").classes("text-sm text-stone-500")
             ui.icon("memory").classes("text-xs text-stone-400")
-            ui.label(f"{device} / {dtype_text}").classes("text-xs text-stone-400 font-mono")
+            ui.label(f"{device} / {dtype_text} / {loaded_backend}").classes("text-xs text-stone-400 font-mono")
 
         spinner = ui.spinner("dots", size="sm", color="primary")
         spinner.set_visibility(False)
@@ -224,12 +226,14 @@ SAMPLING_DEFAULTS: dict[str, Any] = {
 }
 
 
-def sampling_controls() -> Callable[[], dict[str, Any]]:
+def sampling_controls(model_key: str) -> Callable[[], dict[str, Any]]:
     """Render a collapsible sampling-parameters panel.
 
     Returns a callable that produces the current parameter values as a
     ``dict`` suitable for ``**kwargs`` forwarding to the TTS engine.
     """
+
+    subtalker_supported = engine.supports_subtalker_controls(model_key)
 
     # Main parameters
     with ui.row().classes("w-full gap-4 flex-wrap items-end"):
@@ -295,10 +299,13 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
 
     # Subtalker parameters (nested expansion)
     with ui.expansion("Subtalker Parameters").classes("w-full").props("dense header-class=text-xs"):
-        ui.label(
+        info_text = (
             "Controls the sub-codec generation stage of the 12 Hz tokenizer. "
             "Only change these if you know what you are doing."
-        ).classes("text-xs text-stone-400 mb-2")
+        )
+        if not subtalker_supported:
+            info_text += f" Currently unavailable on the loaded {FAST_BACKEND} backend."
+        ui.label(info_text).classes("text-xs text-stone-400 mb-2")
 
         with ui.row().classes("w-full gap-4 flex-wrap items-end"):
             with ui.column().classes("flex-1 min-w-48 gap-1"):
@@ -309,6 +316,9 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
                     step=0.01,
                     value=SAMPLING_DEFAULTS["subtalker_temperature"],
                 ).props("label color=secondary")
+                if not subtalker_supported:
+                    sub_temperature.props(add="disable")
+                    sub_temperature.tooltip("Available only with the normal qwen-tts backend")
 
             with ui.column().classes("flex-1 min-w-48 gap-1"):
                 ui.label("Subtalker Top P").classes("text-xs text-stone-500")
@@ -318,6 +328,9 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
                     step=0.01,
                     value=SAMPLING_DEFAULTS["subtalker_top_p"],
                 ).props("label color=secondary")
+                if not subtalker_supported:
+                    sub_top_p.props(add="disable")
+                    sub_top_p.tooltip("Available only with the normal qwen-tts backend")
 
             sub_top_k = (
                 ui.number(
@@ -330,6 +343,9 @@ def sampling_controls() -> Callable[[], dict[str, Any]]:
                 .classes("flex-1 min-w-36")
                 .props("filled dense")
             )
+            if not subtalker_supported:
+                sub_top_k.props(add="disable")
+                sub_top_k.tooltip("Available only with the normal qwen-tts backend")
 
     # Reset button
     all_controls = {
